@@ -18,6 +18,8 @@ int random_int_between(int min, int max) {
   return min + (rand() % (max - min));
 }
 
+const int terrain_size = 1000;
+
 GFX_TEXTURE_ID terrains[1000][1000];
 
 RenderBatcher render_batcher = {0};
@@ -74,6 +76,7 @@ void load_fonts() {
 }
 
 void create_tree() {
+  int grid_size = 256 * (int)render_context.camera.zoom;
   float entity_width = 100.0f;
   int texture_id = 8;
   game_context.textures[game_context.entity_count] = (TextureComponent){.texture_id = texture_id, .size = {.x = entity_width}};
@@ -91,8 +94,8 @@ void create_tree() {
   game_context.positions[game_context.entity_count] = (PositionComponent){
       .current_position =
           {
-              .x = (float)random_int_between(-400, 400) * 100,
-              .y = (float)random_int_between(-400, 400) * 100,
+              .x = (float)random_int_between(0, terrain_size) * grid_size,
+              .y = (float)random_int_between(0, terrain_size) * grid_size,
           },
   };
   game_context.positions[game_context.entity_count].previous_position = game_context.positions[game_context.entity_count].current_position;
@@ -101,6 +104,7 @@ void create_tree() {
 }
 
 void create_human(char *name) {
+  int grid_size = 256 * (int)render_context.camera.zoom;
   float entity_width = 100.0f;
   int texture_id = random_int_between(0, 7);
   game_context.textures[game_context.entity_count] = (TextureComponent){.texture_id = texture_id, .size = {.x = entity_width}};
@@ -115,11 +119,15 @@ void create_human(char *name) {
 
   game_context.selected[game_context.entity_count] = false;
   game_context.hovered[game_context.entity_count] = false;
+
+  int start = terrain_size/2 - 5;
+  int end = terrain_size/2 + 5;
+
   game_context.positions[game_context.entity_count] = (PositionComponent){
       .current_position =
           {
-              .x = (float)random_int_between(-1000, 1000),
-              .y = (float)random_int_between(-1000, 1000),
+              .x = (float)random_int_between(start * grid_size, end * grid_size),
+              .y = (float)random_int_between(start * grid_size, end * grid_size),
           },
   };
   game_context.positions[game_context.entity_count].previous_position = game_context.positions[game_context.entity_count].current_position;
@@ -343,6 +351,7 @@ void render_debug_info() {
       index++, "selection: current x,y: %.2f,%.2f target x,y: %.2f,%.2f", selection_rect.position.x, selection_rect.position.y,
       render_context.selection.target.x, render_context.selection.target.y
   );
+  draw_debug_text(index++, "Tiles on Screen: %i", render_context.camera.tiles_in_view);
 }
 
 void draw_selection_box() {
@@ -612,19 +621,22 @@ void draw_terrain(RenderBatcher *batcher) {
   // the ammout of tiles that is drawn beyond the calculated screen tiles
   int padding = 2; // padding in tiles
 
-  // if you want to see that this is actualy working you can go from y = y_start+1; and set padding(var above) to 0, same for x   
-  for (int y = y_start; y < y_start + screen_tiles_y+padding; y++) {
-    for (int x = x_start; x < x_start +screen_tiles_x+padding; x++) {
+  int y_end = y_start + screen_tiles_y+padding > terrain_size ? terrain_size : y_start + screen_tiles_y+padding; 
+  int x_end = x_start + screen_tiles_x+padding > terrain_size ? terrain_size : x_start + screen_tiles_x+padding; 
+  render_context.camera.tiles_in_view = 0;
+  for (int y = y_start; y < y_end; y++) {
+    for (int x = x_start; x < x_end; x++) {
+      render_context.camera.tiles_in_view++;
       float grid_pos_x = x * grid_size;
       float grid_pos_y = y * grid_size;
       render_batcher_copy_texture_quad(
           batcher, render_context.texture_atlas.textures[terrains[y][x]], &color,
           &(FRect){
               // use top left position for drawing
-              .position.x = grid_pos_x - (camera.x*zoom - render_context.window_w / 2),
-              .position.y = grid_pos_y - (camera.y*zoom - render_context.window_h / 2),
-              .size.x = grid_size + grid_pos_x  - (camera.x*zoom - render_context.window_w / 2),
-              .size.y = grid_size + grid_pos_y - (camera.y*zoom - render_context.window_h / 2),
+              .position.x = roundf(grid_pos_x - (camera.x*zoom - render_context.window_w / 2)),
+              .position.y = roundf(grid_pos_y - (camera.y*zoom - render_context.window_h / 2)),
+              .size.x = roundf(grid_size + grid_pos_x  - (camera.x*zoom - render_context.window_w / 2)),
+              .size.y = roundf(grid_size + grid_pos_y - (camera.y*zoom - render_context.window_h / 2)),
           },
           NULL
       );
@@ -648,6 +660,10 @@ void mouse_control_camera() {
 }
 
 void deselect_all_entities() {
+  // reset spring position
+  render_context.camera.pan_spring_x.current = render_context.camera.current.x;
+  render_context.camera.pan_spring_y.current = render_context.camera.current.y;
+  
   loop(game_context.entity_count, entity_id) {
     game_context.selected[entity_id] = false;
   }
@@ -926,23 +942,32 @@ int main(int argc, char *args[]) {
   if (gfx_init_result == 1) {
     return EXIT_FAILURE;
   }
+  float grid_size = 256.0f;
 
   render_context.background_color = (SDL_Color){35, 127, 178, 255};
   render_context.camera = (Camera){
       .zoom = 1.0f,
       .target_zoom = 1.0f,
+      .target = {
+        .x = terrain_size/2 * grid_size,
+        .y = terrain_size/2 * grid_size,
+      },
+      .current = {
+        .x = terrain_size/2 * grid_size,
+        .y = terrain_size/2 * grid_size,        
+      },
       .pan_spring_x =
           {
-              .target = 1.0f,
-              .current = 1.0f,
+              .target = terrain_size/2 * grid_size,
+              .current = terrain_size/2 * grid_size,
               .velocity = 0.0f,
               .acceleration = 2.0f,
               .friction = 0.05f,
           },
       .pan_spring_y =
           {
-              .target = 1.0f,
-              .current = 1.0f,
+              .target = terrain_size/2 * grid_size,
+              .current = terrain_size/2 * grid_size,
               .velocity = 0.0f,
               .acceleration = 2.0f,
               .friction = 0.05f,
@@ -1070,6 +1095,9 @@ int main(int argc, char *args[]) {
       render_context.camera.current.x = Spring__update(&render_context.camera.pan_spring_x, render_context.camera.target.x);
       render_context.camera.current.y = Spring__update(&render_context.camera.pan_spring_y, render_context.camera.target.y);
     }
+
+    // render_context.camera.current.x = render_context.camera.current.x);
+    // render_context.camera.current.y = render_context.camera.current.y);
 
     render();
   }

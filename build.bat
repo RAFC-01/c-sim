@@ -2,7 +2,7 @@
 cls
 
 @rem Modify the path for your vcvars setup
-set "__localVCVarsPath=F:\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+set "__localVCVarsPath=D:\visualStudio\Community\VC\Auxiliary\Build\vcvars64.bat"
 set __outputMessage=
 
 @rem Setup vcvars environment

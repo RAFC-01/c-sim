@@ -20,6 +20,7 @@ typedef struct {
   Vec2 target;
   float target_zoom;
   float zoom;
+  int tiles_in_view;
   Spring zoom_spring;
   Spring pan_spring_x;
   Spring pan_spring_y;
